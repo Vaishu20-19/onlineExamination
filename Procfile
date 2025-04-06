@@ -1,1 +1,1 @@
-web: gunicorn onlineExamination.wsgi --log-file -
+web: gunicorn onlinexam.wsgi --bind 0.0.0.0:$PORT
