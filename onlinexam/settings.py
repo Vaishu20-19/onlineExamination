@@ -1,21 +1,32 @@
 """
 Django settings for onlinexam project.
-Production-ready for Azure App Service
+Azure-optimized production configuration
 """
 
 import os
 from pathlib import Path
+import socket
 
 # Build paths
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Security - ALL VALUES FROM ENVIRONMENT
-SECRET_KEY = os.environ['SECRET_KEY']  # Will fail if not set (intentional)
+# Security - All sensitive values from environment
+SECRET_KEY = os.environ['SECRET_KEY']  # Must be set in Azure App Settings
 DEBUG = os.environ.get('DEBUG', 'False') == 'True'
-ALLOWED_HOSTS = ['onlinexaminatoin.azurewebsites.net', '127.0.0.1']
+
+# Azure-specific host configuration
+hostname = socket.gethostname()
+ALLOWED_HOSTS = [
+    'onlinexaminatoin.azurewebsites.net',
+    'localhost',
+    '127.0.0.1'
+]
+if not DEBUG:
+    ALLOWED_HOSTS = [os.environ.get('WEBSITE_HOSTNAME', 'onlinexaminatoin.azurewebsites.net')]
+
 CSRF_TRUSTED_ORIGINS = [f'https://{host}' for host in ALLOWED_HOSTS]
 
-# Application definition
+# Application definition (optimized for production)
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -23,7 +34,11 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'whitenoise.runserver_nostatic',
+    
+    # Third-party
+    'whitenoise.runserver_nostatic',  # Must come before staticfiles
+    
+    # Local apps
     'exam',
     'teacher',
     'student',
@@ -32,7 +47,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',  # Immediately after SecurityMiddleware
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -40,50 +55,28 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-ROOT_URLCONF = 'onlinexam.urls'
-
-TEMPLATES = [
-    {
-        'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [os.path.join(BASE_DIR, 'templates')],
-        'APP_DIRS': True,
-        'OPTIONS': {
-            'context_processors': [
-                'django.template.context_processors.debug',
-                'django.template.context_processors.request',
-                'django.contrib.auth.context_processors.auth',
-                'django.contrib.messages.context_processors.messages',
-            ],
-        },
-    },
-]
-
-WSGI_APPLICATION = 'onlinexam.wsgi.application'
-
-# Database - Using SQLite (for initial deployment)
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+# Database configuration (SQLite for dev, PostgreSQL for production)
+if DEBUG:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.environ.get('DB_NAME'),
+            'USER': os.environ.get('DB_USER'),
+            'PASSWORD': os.environ.get('DB_PASSWORD'),
+            'HOST': os.environ.get('DB_HOST'),
+            'PORT': os.environ.get('DB_PORT', '5432'),
+            'OPTIONS': {'sslmode': 'require'},
+        }
+    }
 
-# Password validation
-AUTH_PASSWORD_VALIDATORS = [
-    {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
-    {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
-    {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},
-    {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
-]
-
-# Internationalization
-LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'UTC'
-USE_I18N = True
-USE_L10N = True
-USE_TZ = True
-
-# Static files (Azure compatible)
+# Static files (Azure-optimized)
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_DIRS = [BASE_DIR / 'static']
@@ -93,11 +86,19 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
-# Security (enable in production)
+# Security headers (auto-enabled in production)
 if not DEBUG:
-    SECURE_HSTS_SECONDS = 3600
+    SECURE_HSTS_SECONDS = 2_592_000  # 30 days
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
     SECURE_SSL_REDIRECT = True
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+# Azure-specific optimizations
+if 'WEBSITE_SITE_NAME' in os.environ:
+    # Cache static files in memory
+    WHITENOISE_USE_FINDERS = True
+    WHITENOISE_MANIFEST_STRICT = False
+    WHITENOISE_MAX_AGE = 3600  # 1 hour cache
